@@ -104,6 +104,7 @@ button.sm.active { background:var(--accent); color:#0d1324; }
 }
 .tab-btn.active { background:var(--accent); color:#0d1324; }
 .badge { font-size:10px; padding:1px 5px; border-radius:99px; background:#0004; }
+.preview-outer { position:relative; }
 .preview-wrap {
   background-color:#070c17;
   background-image:linear-gradient(45deg,#0d1526 25%,transparent 25%),
@@ -116,11 +117,22 @@ button.sm.active { background:var(--accent); color:#0d1324; }
   padding:16px; position:relative; cursor:pointer; transition:border-color .15s,background-color .15s;
 }
 .preview-wrap:hover,.preview-wrap.dragover { border-color:var(--accent); background-color:#0b1426; }
-.preview-wrap.has-image { border-style:solid; border-color:var(--line); }
-.preview-stage { position:relative; display:inline-block; margin:auto; }
+.preview-wrap.has-image { border-style:solid; border-color:var(--line); cursor:default; }
+.preview-upload-btn {
+  position:absolute; bottom:10px; right:10px; z-index:20;
+  background:#151f34ee; border:1px solid var(--accent); color:var(--text);
+  padding:6px 11px; border-radius:8px; font-size:11px; font-weight:700;
+  box-shadow:0 4px 12px #0008; display:flex; align-items:center; gap:4px;
+}
+.preview-upload-btn:hover { background:var(--accent); color:#0d1324; }
+.preview-stage { position:relative; display:inline-block; margin:auto; user-select:none; }
 canvas { image-rendering:pixelated; box-shadow:0 4px 20px #0009; max-width:none; display:block; cursor:crosshair; }
 .map-grid-overlay {
   position:absolute; inset:0; pointer-events:none; z-index:1;
+}
+.selection-box {
+  position:absolute; border:1.5px solid #ffd166; background:rgba(255, 209, 102, 0.22);
+  pointer-events:none; z-index:2; box-shadow:0 0 0 1px #0008;
 }
 .coord-tooltip {
   position:absolute; background:#0b1323f2; border:1px solid var(--accent);
@@ -145,12 +157,33 @@ canvas { image-rendering:pixelated; box-shadow:0 4px 20px #0009; max-width:none;
 .toolbar { display:flex; justify-content:space-between; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center; }
 .zoom-group { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
 .zoom-label { font-size:11px; color:var(--muted); min-width:42px; text-align:center; }
+.selection-panel {
+  margin-top:10px; background:#0c1526; border:1px solid #ffd16666;
+  border-radius:9px; padding:10px;
+}
+.selection-header {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:8px; margin-bottom:8px; font-size:11px;
+}
+.selection-title { color:#ffd166; font-weight:700; }
+.selection-list {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(175px,1fr));
+  gap:6px; max-height:140px; overflow:auto;
+}
+.selection-item {
+  background:#131f36; border:1px solid var(--line); border-radius:6px;
+  padding:5px 8px; display:flex; align-items:center; justify-content:space-between;
+  font-size:11px; gap:6px;
+}
+.selection-item-left { display:flex; align-items:center; min-width:0; }
+.selection-item-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.selection-item-count { font-weight:700; white-space:nowrap; color:var(--good); font-variant-numeric:tabular-nums; }
 .table-wrap { max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
 table { width:100%; border-collapse:collapse; font-size:11px; }
 thead th { position:sticky; top:0; background:#131d33; color:var(--muted); z-index:1; }
 th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); }
 tr.checked { opacity:.45; text-decoration:line-through; }
-.swatch { display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:middle; margin-right:6px; border:1px solid #ffffff59; }
+.swatch { display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:middle; margin-right:6px; border:1px solid #ffffff59; flex-shrink:0; }
 .color-name { white-space:nowrap; font-weight:500; }
 .count { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .sub-count { display:block; font-size:10px; color:var(--muted); }
@@ -244,7 +277,7 @@ tr.checked { opacity:.45; text-decoration:line-through; }
     <span>※ カスタムIDパレット</span>
   </div>
 
-  <div class="notice">プレビュー画面をクリックして画像を選択できます。四隅の座標タグはクリックでコピーできます。</div>
+  <div class="notice">プレビュー上をドラッグ選択すると、その範囲内の必要ブロック数を集計できます。四隅の座標タグはクリックでコピーできます。</div>
 </section>
 
 <section class="panel">
@@ -260,21 +293,34 @@ tr.checked { opacity:.45; text-decoration:line-through; }
   </div>
 
   <div id="tab-preview" class="tab-content">
-    <div class="preview-wrap" id="previewWrap" title="クリックまたはドラッグ＆ドロップで画像を選択">
-      <div class="empty" id="emptyPrompt">
-        <strong>クリックまたはドロップして画像を選択</strong>
-        <span>PNG・JPG・WEBP に対応</span>
+    <div class="preview-outer">
+      <div class="preview-wrap" id="previewWrap" title="ドラッグで範囲選択 / ドロップで画像読込">
+        <div class="empty" id="emptyPrompt">
+          <strong>クリックまたはドロップして画像を選択</strong>
+          <span>PNG・JPG・WEBP に対応</span>
+        </div>
+        <div class="preview-stage" id="previewStage" hidden>
+          <canvas id="preview"></canvas>
+          <div class="map-grid-overlay" id="mapGridOverlay" hidden></div>
+          <div class="selection-box" id="selectionBox" hidden></div>
+          <div class="corner-tag corner-nw" id="tagNW" title="クリックでコピー">左上: —</div>
+          <div class="corner-tag corner-ne" id="tagNE" title="クリックでコピー">右上: —</div>
+          <div class="corner-tag corner-sw" id="tagSW" title="クリックでコピー">左下: —</div>
+          <div class="corner-tag corner-se" id="tagSE" title="クリックでコピー">右下: —</div>
+          <div class="coord-tooltip" id="coordTooltip">X: 0, Z: 0</div>
+        </div>
       </div>
-      <div class="preview-stage" id="previewStage" hidden>
-        <canvas id="preview"></canvas>
-        <div class="map-grid-overlay" id="mapGridOverlay" hidden></div>
-        <div class="corner-tag corner-nw" id="tagNW" title="クリックでコピー">左上: —</div>
-        <div class="corner-tag corner-ne" id="tagNE" title="クリックでコピー">右上: —</div>
-        <div class="corner-tag corner-sw" id="tagSW" title="クリックでコピー">左下: —</div>
-        <div class="corner-tag corner-se" id="tagSE" title="クリックでコピー">右下: —</div>
-        <div class="coord-tooltip" id="coordTooltip">X: 0, Z: 0</div>
-      </div>
+      <button type="button" class="preview-upload-btn" id="previewUploadBtn" title="画像をアップロード">アップロード</button>
     </div>
+
+    <div class="selection-panel" id="selectionPanel" hidden>
+      <div class="selection-header">
+        <span class="selection-title" id="selectionSummary">選択範囲: 0×0 (0ブロック)</span>
+        <button type="button" class="secondary sm" id="clearSelection">選択解除</button>
+      </div>
+      <div class="selection-list" id="selectionList"></div>
+    </div>
+
     <div class="toolbar">
       <div class="zoom-group">
         <button id="zoomOut" class="secondary sm" disabled>－</button>
@@ -338,12 +384,14 @@ const palette = [
 const $ = id => document.getElementById(id);
 let sourceImage=null,outputPixels=null,lastRows=[],zoom=1,outW=0,outH=0;
 let minXCoord=0,minZCoord=0,isTileSelectorOpen=false,showMapGrid=false;
+let isSelecting=false,selStart=null,selRect=null;
 
 const fileInput=$("file");
 const canvas=$("preview");
 const previewWrap=$("previewWrap");
 const previewStage=$("previewStage");
 const mapGridOverlay=$("mapGridOverlay");
+const selectionBox=$("selectionBox");
 const ctx=canvas.getContext("2d",{willReadFrequently:true});
 
 const TILE_COLS=8;
@@ -420,7 +468,13 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
 
 fileInput.addEventListener("change",loadFile);
 
+$("previewUploadBtn").addEventListener("click",e=>{
+  e.stopPropagation();
+  fileInput.click();
+});
+
 previewWrap.addEventListener("click",e=>{
+  if(outputPixels)return;
   if(e.target.closest(".corner-tag"))return;
   fileInput.click();
 });
@@ -514,6 +568,111 @@ function updateMapGrid(){
   mapGridOverlay.style.boxShadow="inset 0 0 0 1.5px rgba(255, 85, 85, 0.9)";
 }
 
+function getCanvasPixel(e){
+  const rect=canvas.getBoundingClientRect();
+  const clientX=e.clientX-rect.left;
+  const clientY=e.clientY-rect.top;
+  const px=Math.max(0,Math.min(outW-1,Math.floor(clientX/zoom)));
+  const pz=Math.max(0,Math.min(outH-1,Math.floor(clientY/zoom)));
+  return {px,pz};
+}
+
+function updateSelectionBox(){
+  if(!selRect||!outW||!outH){
+    selectionBox.hidden=true;
+    return;
+  }
+  selectionBox.hidden=false;
+  selectionBox.style.left=(selRect.x1*zoom)+"px";
+  selectionBox.style.top=(selRect.z1*zoom)+"px";
+  selectionBox.style.width=((selRect.x2-selRect.x1+1)*zoom)+"px";
+  selectionBox.style.height=((selRect.z2-selRect.z1+1)*zoom)+"px";
+}
+
+function renderSelectionCounts(){
+  if(!selRect||!outputPixels){
+    $("selectionPanel").hidden=true;
+    return;
+  }
+  const {x1,z1,x2,z2}=selRect;
+  const counts=new Array(palette.length).fill(0);
+  let total=0;
+  for(let z=z1;z<=z2;z++){
+    const rowOffset=z*outW;
+    for(let x=x1;x<=x2;x++){
+      counts[outputPixels[rowOffset+x]]++;
+      total++;
+    }
+  }
+  const sw=x2-x1+1;
+  const sh=z2-z1+1;
+  const wx1=minXCoord+x1,wz1=minZCoord+z1;
+  const wx2=minXCoord+x2,wz2=minZCoord+z2;
+  $("selectionSummary").textContent=`選択範囲: ${sw}×${sh} (${total.toLocaleString("ja-JP")}ブロック) [${wx1},${wz1} ～ ${wx2},${wz2}]`;
+
+  const list=$("selectionList");
+  list.innerHTML="";
+  const rows=palette.map((p,i)=>({...p,count:counts[i]}))
+    .filter(p=>p.count>0)
+    .sort((a,b)=>b.count-a.count);
+
+  for(const p of rows){
+    const stacks=Math.floor(p.count/64);
+    const rem=p.count%64;
+    const stackInfo=stacks>0?` (${stacks}st${rem>0?`+${rem}`:""})`:"";
+    const item=document.createElement("div");
+    item.className="selection-item";
+    item.innerHTML=`
+      <div class="selection-item-left">
+        <span class="swatch" style="background:${p.hex}"></span>
+        <span class="selection-item-name" title="${p.name}">${p.name}</span>
+      </div>
+      <span class="selection-item-count">${p.count.toLocaleString("ja-JP")}個${stackInfo}</span>
+    `;
+    list.appendChild(item);
+  }
+  $("selectionPanel").hidden=false;
+}
+
+function clearSelection(){
+  isSelecting=false;
+  selStart=null;
+  selRect=null;
+  selectionBox.hidden=true;
+  $("selectionPanel").hidden=true;
+}
+
+$("clearSelection").addEventListener("click",clearSelection);
+
+canvas.addEventListener("mousedown",e=>{
+  if(e.button!==0||!outputPixels)return;
+  e.preventDefault();
+  isSelecting=true;
+  const pt=getCanvasPixel(e);
+  selStart=pt;
+  selRect={x1:pt.px,z1:pt.pz,x2:pt.px,z2:pt.pz};
+  updateSelectionBox();
+  renderSelectionCounts();
+});
+
+window.addEventListener("mousemove",e=>{
+  if(!isSelecting||!selStart||!outputPixels)return;
+  const pt=getCanvasPixel(e);
+  selRect={
+    x1:Math.min(selStart.px,pt.px),
+    z1:Math.min(selStart.pz,pt.pz),
+    x2:Math.max(selStart.px,pt.px),
+    z2:Math.max(selStart.pz,pt.pz)
+  };
+  updateSelectionBox();
+  renderSelectionCounts();
+});
+
+window.addEventListener("mouseup",()=>{
+  if(!isSelecting)return;
+  isSelecting=false;
+});
+
 function loadFile(e){
   const file=e.target.files?.[0];
   if(!file)return;
@@ -567,6 +726,7 @@ function getTargetDimensions(){
 
 function convert(){
   if(!sourceImage)return;
+  clearSelection();
   const {w,h}=getTargetDimensions();
 
   if($("sizeMode").value!=="maps"){
@@ -737,6 +897,7 @@ function setZoom(v){
   canvas.style.height=Math.round(outH*zoom)+"px";
   $("zoomLabel").textContent=Math.round(zoom*100)+"%";
   updateMapGrid();
+  updateSelectionBox();
 }
 
 function fitZoom(){
@@ -782,6 +943,7 @@ function calculateCoords(){
   setCorner("tagNE","右上",maxX,minZCoord);
   setCorner("tagSW","左下",minXCoord,maxZ);
   setCorner("tagSE","右下",maxX,maxZ);
+  if(selRect)renderSelectionCounts();
 }
 
 document.querySelectorAll(".corner-tag").forEach(tag=>{
